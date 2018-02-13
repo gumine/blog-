@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+	<link rel="stylesheet" href="https://cdn.bootcss.com/bootstrap/4.0.0-beta/css/bootstrap.min.css">
+	<link rel="stylesheet" href="./css/css1.css">
+    <script src="https://cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://cdn.bootcss.com/popper.js/1.12.5/umd/popper.min.js"></script>
+    <script src="https://cdn.bootcss.com/bootstrap/4.0.0-beta/js/bootstrap.min.js"></script>
+	<title>使用IdentityServer保护API</title>
+</head>
+<body>
+	<header>
+		<nav>
+			<ul class="nav">
+				  <li class="nav-item">
+				    <a class="nav-link" href="file:///C:/Users/%E7%BD%97%E5%AE%81/Desktop/bs4/index.html">首页</a>
+				  </li>
+				  <li class="nav-item">
+				    <a class="nav-link" href="#">分类</a>
+				  </li>
+				  <li class="nav-item">
+				    <a class="nav-link" href="#">归档</a>
+				  </li>
+			</ul>
+		</nav>
+    </header>
+    <div class="container">
+    <div class="row">
+    <section id="blog-main" class="col-md-8">
+		<h1 id="title" class="text-center">使用IdentityServer保护API</h1>
+		<h6 id="tags" class="text-center">tags:IdentityServer, IdentityServer4</h6>
+		<h6 id="category" class="text-center">category: 框架和第三方库</h6>
+	<!-- Markdown文档内容从这里开始插入 -->
+		<h2 id="section">前言</h2>
+		<p>关于认证服务本来打算使用Azure AD，但在部署的时候碰到一些小问题，且Azure AD需要和订阅绑定，为了方便之后的拓展开发，所以最后决定自己构建一套账号认证服务，计划采用框架为IdentityServer4。</p>
+		<h2 id="section-1">初步构建</h2>
+		<p>因为一些个人原因，以及调试方便，这里我就直接使用VS作为开发环境了，之后如果有空的话，会补上脱离VS的开发流程。</p>
+		<p>首先，我们通过VS 建立一个空的Asp.net Core项目，并添加上IdentityServer4引用，在程序包管理控制台中键入以下代码。</p>
+		<pre><code class="language-shell">Install-Package IdentityServer4 -v 2.1.1
+		</code></pre>
+		<p>然后，我们创建一个<code>Config.cs</code>文件，用于配置测试数据。</p>
+		<pre><code class="language-c#">
+		using IdentityServer4;
+		using IdentityServer4.Models;
+		using IdentityServer4.Test;
+		using System.Collections.Generic;
+		using System.Security.Claims;
+
+		namespace SSO
+		{
+		    public class Config
+		    {
+		        // scopes
+		        public static IEnumerable&lt;IdentityResource&gt; GetIdentityResources()
+		        {
+		            return new List&lt;IdentityResource&gt;
+		            {
+		                new IdentityResources.OpenId(),
+		                new IdentityResources.Profile()
+		            };
+		        }
+
+		        // api
+		        public static IEnumerable&lt;ApiResource&gt; GetApiResources()
+		        {
+		            return new List&lt;ApiResource&gt;
+		            {
+		                new ApiResource(&quot;api1&quot;, &quot;MY API&quot;)
+		            };
+		        }
+
+		        // client
+		        public static IEnumerable&lt;Client&gt; GetClients()
+		        {
+		            // client credentials client
+		            return new List&lt;Client&gt;
+		            {
+		                new Client
+		                {
+		                    ClientId = &quot;client&quot;,
+		                    AllowedGrantTypes = GrantTypes.ClientCredentials,
+
+		                    ClientSecrets =
+		                    {
+		                        new Secret(&quot;secret&quot;.Sha256())
+		                    },
+		                    AllowedScopes = { &quot;api1&quot; }
+		                },
+
+		                // resource owner password grant client
+		                new Client
+		                {
+		                    ClientId = &quot;ro.client&quot;,
+		                    AllowedGrantTypes = GrantTypes.ResourceOwnerPassword,
+		                    AllowOfflineAccess = true,
+
+		                    ClientSecrets =
+		                    {
+		                        new Secret(&quot;secret&quot;.Sha256())
+		                    },
+		                    AllowedScopes = { &quot;api1&quot;, &quot;profile&quot;, &quot;openid&quot; }
+		                },
+
+		                // OpenID Connect hybrid flow and client credentials client (MVC)
+		                new Client
+		                {
+		                    ClientId = &quot;mvc&quot;,
+		                    ClientName = &quot;MVC Client&quot;,
+		                    AllowedGrantTypes = GrantTypes.HybridAndClientCredentials,
+
+		                    ClientSecrets =
+		                    {
+		                        new Secret(&quot;secret&quot;.Sha256())
+		                    },
+
+		                    RedirectUris = { &quot;http://localhost:5002/signin-oidc&quot; },
+		                    PostLogoutRedirectUris = { &quot;http://localhost:5002/signout-callback-oidc&quot; },
+
+		                    AllowedScopes =
+		                    {
+		                        IdentityServerConstants.StandardScopes.OpenId,
+		                        IdentityServerConstants.StandardScopes.Profile,
+		                        &quot;api1&quot;
+		                    },
+		                    AllowOfflineAccess = true
+		                },
+
+		                // JavaScript Client
+		                new Client
+		                {
+		                    ClientId = &quot;js&quot;,
+		                    ClientName = &quot;JavaScript Client&quot;,
+		                    AllowedGrantTypes = GrantTypes.Implicit,
+		                    AllowAccessTokensViaBrowser = true,
+
+		                    RedirectUris = { &quot;http://localhost:5003/callback.html&quot; },
+		                    PostLogoutRedirectUris = { &quot;http://localhost:5003/index.html&quot; },
+		                    AllowedCorsOrigins = { &quot;http://localhost:5003&quot; },
+
+		                    AllowedScopes =
+		                    {
+		                        IdentityServerConstants.StandardScopes.OpenId,
+		                        IdentityServerConstants.StandardScopes.Profile,
+		                        &quot;api1&quot;
+		                    },
+		                }
+		            };
+		        }
+
+		        // user
+		        public static List&lt;TestUser&gt; GetUsers()
+		        {
+		            return new List&lt;TestUser&gt;
+		            {
+		                new TestUser
+		                {
+		                    SubjectId = &quot;1&quot;,
+		                    Username = &quot;alice&quot;,
+		                    Password = &quot;password&quot;,
+
+		                    Claims = new List&lt;Claim&gt;
+		                    {
+		                        new Claim(&quot;name&quot;, &quot;Alice&quot;),
+		                        new Claim(&quot;website&quot;, &quot;https://alice.com&quot;)
+		                    }
+		                },
+		                new TestUser
+		                {
+		                    SubjectId = &quot;2&quot;,
+		                    Username = &quot;bob&quot;,
+		                    Password = &quot;password&quot;,
+
+		                    Claims = new List&lt;Claim&gt;
+		                    {
+		                        new Claim(&quot;name&quot;, &quot;Bob&quot;),
+		                        new Claim(&quot;website&quot;, &quot;https://bob.com&quot;)
+		                    }
+		                }
+		            };
+		        }
+		    }
+		}
+		</code></pre>
+		<p>在<code>Startup.cs</code>中配置IdentityServer。</p>
+		<pre><code class="language-c#">public void ConfigureServices(IServiceCollection services)
+		{
+		    services.AddIdentityServer()
+		        .AddDeveloperSigningCredential()
+		        .AddInMemoryIdentityResources(Config.GetIdentityResources())
+		        .AddInMemoryApiResources(Config.GetApiResources())
+		        .AddInMemoryClients(Config.GetClients())
+		        .AddTestUsers(Config.GetUsers());
+		}
+
+		public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+		{
+		    // ...
+		    app.UseIdentityServer();
+		}
+		</code></pre>
+		<p>最后修改项目的启动设置<code>Properties &gt; launchSettings.json</code>，将<code>applicationUrl</code>均设置为<code>http://localhost:5000/</code>，<code>launchBrowser</code>为<code>false</code>。</p>
+		<p>为了方便之后的使用，这里我们通过IIS Express启动。</p>
+		<p>访问<a href="http://localhost:5000/.well-known/openid-configuration">http://localhost:5000/.well-known/openid-configuration</a>我们应该能看到IdentityServer的元数据。</p>
+		<p><img src="https://blog-1252574286.cossh.myqcloud.com/pfstudio/IdentityServer/1-IdentityServer-metadata.PNG" class="img-fluid" alt="IdentityServer-metadata" /></p>
+		<p>至此，我们通过测试数据和默认配置初步构建了一个IdentityServer。</p>
+	<!-- Markdown文档内容结束 -->
+		<div class="clearfix">
+			<h6 id="author" class="float-right"><small>author: yiluomyt</small></h6>
+			<h6 id="date" class="float-right"><small>date: 2018-01-28</small></h6>
+		</div>
+	</section>
+	<aside class="col-md-4 blog-sidebar">
+          <div class="p-3 mb-3 bg-light rounded">
+            <h4 class="font-italic">简介</h4>
+            <p class="mb-0">Etiam porta <em>sem malesuada magna</em> mollis euismod. Cras mattis consectetur purus sit amet fermentum. Aenean lacinia bibendum nulla sed consectetur.</p>
+          </div>
+
+          <div class="p-3">
+            <h4 class="font-italic"">分类</h4>
+            <ol class="list-unstyled">
+              <li><a href="#">语言</a></li>
+              <li><a href="#">算法</a></li>
+              <li><a href="#">环境</a></li>
+              <li><a href="#">框架和第三方库</a></li>
+              <li><a href="#">工具</a></li>
+              <li><a href="#">云服务</a></li>
+            </ol>
+          </div>
+
+		  <div class="p-3">
+			    <h4 class="font-italic">标签</h4>
+			    <ol class="list-unstyled">
+			        <li><a href="#">标签1</a></li>
+			        <li><a href="#">标签2</a></li>
+			        <li><a href="#">标签3</a></li>
+			    </ol>
+		  </div>
+
+          <div class="p-3">
+            <h4 class="font-italic">归档</h4>
+            <ol class="list-unstyled mb-0">
+                <li><a href="#">January 2018</a></li>
+                <li><a href="#">February 2018</a></li>
+                <li><a href="#">March 2018</a></li>
+                <li><a href="#">April 2018</a></li>
+                <li><a href="#">May 2018</a></li>
+                <li><a href="#">June 2018</a></li>
+				<li><a href="#">July 2018</a></li>
+				<li><a href="#">August 2018</a></li>
+                <li><a href="#">September 2018</a></li>
+                <li><a href="#">October 2018</a></li>
+                <li><a href="#">November 2018</a></li>
+                <li><a href="#">December 2018</a></li>
+            </ol>
+          </div>
+
+          
+    </aside>
+    </div>
+	</div>
+	<br>
+	<footer class="blog-footer">
+		<div class="container-fluid">
+		    <p>原创声明：商业转载请联系作者获得授权,非商业转载请注明出处 © 攀峰工作室 友情链接：<a href="https://pfsign.hdulxy.cn/">攀峰工作室签到系统</a></p>
+		    <p>
+		      <a href="#">返回顶部</a>
+		    </p>
+		</div>
+	</footer>
+</body>
+</html>
